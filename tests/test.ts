@@ -2,13 +2,13 @@ import * as anchor from '@project-serum/anchor';
 import { Program } from '@project-serum/anchor';
 import { First } from '../target/types/first';
 
-import { 
-  PublicKey, 
-  SystemProgram, 
-  Transaction, 
+import {
+  PublicKey,
+  SystemProgram,
+  Transaction,
 } from '@solana/web3.js';
 
-import { TOKEN_PROGRAM_ID, Token, AccountLayout} from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID, Token, AccountLayout } from "@solana/spl-token";
 import { assert } from "chai";
 
 describe('test', () => {
@@ -30,6 +30,8 @@ describe('test', () => {
 
   const userTokenAmount = 1000;
   const user1TokenAmount = 2000;
+
+  const lockTime = 1645455047;
 
   const userWithdrawAmount = 500;
 
@@ -76,7 +78,7 @@ describe('test', () => {
       0,
       TOKEN_PROGRAM_ID
     );
-    
+
     userTokenAccount = await tokenMint.createAccount(user.publicKey);
     user1TokenAccount = await tokenMint.createAccount(user1.publicKey);
     await tokenMint.mintTo(
@@ -97,15 +99,21 @@ describe('test', () => {
     assert.ok(userTokenInfo.amount.toNumber() == userTokenAmount);
     assert.ok(user1TokenInfo.amount.toNumber() == user1TokenAmount);
 
-    
+
   });
-  it("Initialize", async() => {
+  it("Initialize", async () => {
+    const [_lock_time_pda, _lock_time_pda_bump] = await PublicKey.findProgramAddress(
+      [Buffer.from(("lock-time")), admin.publicKey.toBuffer()],
+      firstProgram.programId
+    );
     const [_vault_pda, _vault_pda_bump] = await PublicKey.findProgramAddress(
       [Buffer.from(("vault")), admin.publicKey.toBuffer()],
       firstProgram.programId
     );
     let txHash = await firstProgram.rpc.initialize(
+      _lock_time_pda_bump,
       _vault_pda_bump,
+      new anchor.BN(lockTime),
       {
         accounts: {
           owner: admin.publicKey,
@@ -113,7 +121,8 @@ describe('test', () => {
           vaultAccount: _vault_pda,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: anchor.web3.SystemProgram.programId,
-          rent: anchor.web3.SYSVAR_RENT_PUBKEY
+          lockTimeAccount: _lock_time_pda,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
         },
         signers: [admin],
       }
@@ -133,7 +142,7 @@ describe('test', () => {
       [Buffer.from("vault"), admin.publicKey.toBuffer()],
       firstProgram.programId
     );
-        
+
     await firstProgram.rpc.deposit(
       _user_staker_pda_bump,
       new anchor.BN(userTokenAmount),
@@ -148,7 +157,7 @@ describe('test', () => {
           systemProgram: anchor.web3.SystemProgram.programId
         },
         signers: [user]
-    });
+      });
     await firstProgram.rpc.deposit(
       _user1_staker_pda_bump,
       new anchor.BN(user1TokenAmount),
@@ -163,10 +172,14 @@ describe('test', () => {
           systemProgram: anchor.web3.SystemProgram.programId
         },
         signers: [user1]
-    });
+      });
   });
-    
-  it("Withdraw", async () => {
+
+  it("Claim", async () => {
+    const [_time_lock_pda, _time_lock_pda_bump] = await PublicKey.findProgramAddress(
+      [Buffer.from("lock-time"), admin.publicKey.toBuffer()],
+      firstProgram.programId
+    );
     const [_vault_pda, _vault_pda_bump] = await PublicKey.findProgramAddress(
       [Buffer.from("vault"), admin.publicKey.toBuffer()],
       firstProgram.programId
@@ -179,7 +192,7 @@ describe('test', () => {
       [Buffer.from("vault-authority")],
       firstProgram.programId
     );
-    await firstProgram.rpc.withdraw(
+    await firstProgram.rpc.claim(
       new anchor.BN(userWithdrawAmount),
       {
         accounts: {
@@ -190,6 +203,7 @@ describe('test', () => {
           tokenProgram: TOKEN_PROGRAM_ID,
           tokenStaker: _user_staker_pda,
           vaultAuthority: _vault_authority_pda,
+          lockTimeAccount: _time_lock_pda,
         },
         signers: [user]
       }
